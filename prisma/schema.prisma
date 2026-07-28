@@ -1,3 +1,6 @@
+// Schema do banco de dados - Clínica Digital SaaS
+// Multi-tenant: cada Clinic é um tenant isolado logicamente por clinicId
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,10 +11,10 @@ datasource db {
 }
 
 enum Role {
-  SUPER_ADMIN
-  CLINIC_ADMIN
-  PROFESSIONAL
-  PATIENT
+  SUPER_ADMIN   // dono do SaaS
+  CLINIC_ADMIN  // administrador da clínica
+  PROFESSIONAL  // médico/psicólogo/dentista etc
+  PATIENT       // paciente
 }
 
 enum AppointmentStatus {
@@ -49,11 +52,12 @@ enum PayoutStatus {
   PAID
 }
 
+// ---------- Tenant ----------
 model Clinic {
   id          String   @id @default(cuid())
   name        String
-  slug        String   @unique
-  specialty   String?
+  slug        String   @unique // usado na URL: /clinica-slug
+  specialty   String? // ex: "Odontologia", "Psicologia" (só informativo, não restringe)
   phone       String?
   address     String?
   logoUrl     String?
@@ -69,5 +73,153 @@ model Clinic {
   medicalRecords MedicalRecord[]
 }
 
+// ---------- Usuários ----------
 model User {
-  id            String   @id @default(cuid
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role
+  phone         String?
+  createdAt     DateTime @default(now())
+
+  clinicId      String?  // null para SUPER_ADMIN e para pacientes multi-clínica
+  clinic        Clinic?  @relation(fields: [clinicId], references: [id])
+
+  professional  Professional?
+  appointmentsAsPatient Appointment[] @relation("PatientAppointments")
+  medicalRecordsAsPatient MedicalRecord[] @relation("PatientRecords")
+}
+
+// ---------- Profissional (médico, dentista, psicólogo...) ----------
+model Professional {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  clinicId          String
+  clinic            Clinic   @relation(fields: [clinicId], references: [id])
+  specialty         String
+  commissionPercent Float    @default(70) // % que fica com o profissional (repasse)
+  bio               String?
+  active            Boolean  @default(true)
+
+  services      Service[]        @relation("ProfessionalServices")
+  availability  Availability[]
+  appointments  Appointment[]
+  payouts       ProfessionalPayout[]
+}
+
+// Janelas de disponibilidade recorrentes (por dia da semana)
+model Availability {
+  id             String   @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+  weekday        Int      // 0=domingo ... 6=sábado
+  startTime      String   // "08:00"
+  endTime        String   // "18:00"
+  slotMinutes    Int      @default(30)
+}
+
+// ---------- Serviços oferecidos ----------
+model Service {
+  id              String   @id @default(cuid())
+  clinicId        String
+  clinic          Clinic   @relation(fields: [clinicId], references: [id])
+  name            String
+  description     String?
+  price           Decimal  @db.Decimal(10, 2)
+  durationMinutes Int      @default(30)
+  active          Boolean  @default(true)
+
+  professionals Professional[] @relation("ProfessionalServices")
+  appointments  Appointment[]
+}
+
+// ---------- Convênios ----------
+model Insurance {
+  id                  String  @id @default(cuid())
+  clinicId            String
+  clinic              Clinic  @relation(fields: [clinicId], references: [id])
+  name                String
+  reimbursementPercent Float  @default(100)
+  active              Boolean @default(true)
+
+  payments Payment[]
+}
+
+// ---------- Agendamentos ----------
+model Appointment {
+  id             String            @id @default(cuid())
+  clinicId       String
+  clinic         Clinic            @relation(fields: [clinicId], references: [id])
+  patientId      String
+  patient        User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  professionalId String
+  professional   Professional      @relation(fields: [professionalId], references: [id])
+  serviceId      String
+  service        Service           @relation(fields: [serviceId], references: [id])
+
+  datetime       DateTime
+  status         AppointmentStatus @default(PENDING_PAYMENT)
+  notes          String?
+  createdAt      DateTime          @default(now())
+
+  payment        Payment?
+  medicalRecord  MedicalRecord?
+}
+
+// ---------- Pagamentos ----------
+model Payment {
+  id                    String        @id @default(cuid())
+  appointmentId         String        @unique
+  appointment           Appointment   @relation(fields: [appointmentId], references: [id])
+  amount                Decimal       @db.Decimal(10, 2)
+  method                PaymentMethod
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?
+  stripeCheckoutSessionId String?
+  insuranceId           String?
+  insurance             Insurance?    @relation(fields: [insuranceId], references: [id])
+  installmentsCount     Int           @default(1)
+  createdAt             DateTime      @default(now())
+
+  installments Installment[]
+}
+
+// ---------- Parcelas ----------
+model Installment {
+  id        String              @id @default(cuid())
+  paymentId String
+  payment   Payment             @relation(fields: [paymentId], references: [id])
+  number    Int
+  dueDate   DateTime
+  amount    Decimal             @db.Decimal(10, 2)
+  status    InstallmentStatus   @default(PENDING)
+}
+
+// ---------- Repasse por profissional ----------
+model ProfessionalPayout {
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id])
+  periodStart    DateTime
+  periodEnd      DateTime
+  grossAmount    Decimal      @db.Decimal(10, 2)
+  commissionAmount Decimal    @db.Decimal(10, 2)
+  status         PayoutStatus @default(PENDING)
+  paidAt         DateTime?
+}
+
+// ---------- Prontuário básico ----------
+model MedicalRecord {
+  id             String   @id @default(cuid())
+  clinicId       String
+  clinic         Clinic   @relation(fields: [clinicId], references: [id])
+  patientId      String
+  patient        User     @relation("PatientRecords", fields: [patientId], references: [id])
+  appointmentId  String   @unique
+  appointment    Appointment @relation(fields: [appointmentId], references: [id])
+  notes          String   // evolução/anotações clínicas
+  attachments    String[] @default([]) // URLs de arquivos/exames
+  createdAt      DateTime @default(now())
+}
