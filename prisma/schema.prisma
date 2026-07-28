@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  CLINIC_ADMIN
+  PROFESSIONAL
+  PATIENT
+}
+
+enum AppointmentStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELED
+  COMPLETED
+  NO_SHOW
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  INSURANCE
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_PAID
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+model Clinic {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  specialty   String?
+  phone       String?
+  address     String?
+  logoUrl     String?
+  primaryColor String? @default("#2563eb")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users          User[]
+  professionals  Professional[]
+  services       Service[]
+  appointments   Appointment[]
+  insurances     Insurance[]
+  medicalRecords MedicalRecord[]
+}
+
+model User {
+  id            String   @id @default(cuid
