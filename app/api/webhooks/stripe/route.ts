@@ -1,0 +1,53 @@
+import { NextRequest, NextResponse } from "next/server";
+import { stripe } from "@/lib/stripe";
+import { prisma } from "@/lib/prisma";
+import { addMonths } from "date-fns";
+import Stripe from "stripe";
+
+export const runtime = "nodejs";
+
+export async function POST(req: NextRequest) {
+  const body = await req.text();
+  const signature = req.headers.get("stripe-signature") as string;
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err: any) {
+    return NextResponse.json({ error: Assinatura inválida: ${err.message} }, { status: 400 });
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const checkoutSession = event.data.object as Stripe.Checkout.Session;
+    const appointmentId = checkoutSession.metadata?.appointmentId;
+    const installmentsCount = Number(checkoutSession.metadata?.installmentsCount || "1");
+
+    if (appointmentId) {
+      const payment = await prisma.payment.update({
+        where: { appointmentId },
+        data: {
+          status: "PAID",
+          stripePaymentIntentId: checkoutSession.payment_intent as string
+        }
+      });
+
+      await prisma.appointment.update({
+        where: { id: appointmentId },
+        data: { status: "CONFIRMED" }
+      });
+
+      const installmentAmount = Number(payment.amount) / installmentsCount;
+      const installmentsData = Array.from({ length: installmentsCount }).map((_, i) => ({
+        paymentId: payment.id,
+        number: i + 1,
+        dueDate: addMonths(new Date(), i),
+        amount: installmentAmount,
+        status: i === 0 ? ("PAID" as const) : ("PENDING" as const)
+      }));
+
+      await prisma.installment.createMany({ data: installmentsData });
+    }
+  }
+
+  return NextResponse.json({ received: true });
+}
