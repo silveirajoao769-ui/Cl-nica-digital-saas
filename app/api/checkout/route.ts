@@ -33,6 +33,10 @@ export async function POST(req: NextRequest) {
   }
 
   const amount = Number(appointment.service.price);
+  const productName = appointment.service.name + " — " + appointment.clinic.name;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const successUrl = baseUrl + "/" + appointment.clinic.slug + "/pagamento/sucesso?appointmentId=" + appointment.id;
+  const cancelUrl = baseUrl + "/" + appointment.clinic.slug + "/agendar?canceled=1";
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -43,7 +47,7 @@ export async function POST(req: NextRequest) {
           currency: "brl",
           unit_amount: Math.round(amount * 100),
           product_data: {
-            name: ${appointment.service.name} — ${appointment.clinic.name}
+            name: productName
           }
         },
         quantity: 1
@@ -54,8 +58,8 @@ export async function POST(req: NextRequest) {
       installmentsCount: String(installmentsCount),
       method
     },
-    success_url: ${process.env.NEXT_PUBLIC_APP_URL}/${appointment.clinic.slug}/pagamento/sucesso?appointmentId=${appointment.id},
-    cancel_url: ${process.env.NEXT_PUBLIC_APP_URL}/${appointment.clinic.slug}/agendar?canceled=1
+    success_url: successUrl,
+    cancel_url: cancelUrl
   });
 
   await prisma.payment.upsert({
