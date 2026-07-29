@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: { serviceId: s
     return NextResponse.json({ error: "Parâmetro 'date' é obrigatório" }, { status: 400 });
   }
 
-  const date = new Date(${dateStr}T00:00:00);
+  const date = new Date(dateStr + "T00:00:00");
   const slots = await getAvailableSlots(professionalId, date, service.durationMinutes);
 
   return NextResponse.json({ slots });
