@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
   } catch (err: any) {
-    return NextResponse.json({ error: Assinatura inválida: ${err.message} }, { status: 400 });
+    return NextResponse.json({ error: "Assinatura inválida: " + err.message }, { status: 400 });
   }
 
   if (event.type === "checkout.session.completed") {
