@@ -10,11 +10,11 @@ export default async function RedirectPage() {
   const user = session.user as any;
 
   if (user.role === "CLINIC_ADMIN" || user.role === "PROFESSIONAL") {
-    redirect(/admin/${user.clinicSlug}/dashboard);
+    redirect("/admin/" + user.clinicSlug + "/dashboard");
   }
 
   if (user.role === "PATIENT") {
-    redirect(/);
+    redirect("/");
   }
 
   redirect("/login");
